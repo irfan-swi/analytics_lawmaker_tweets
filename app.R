@@ -22,11 +22,15 @@ df_monthly <- df %>%
   group_by(display_name, party_name, person_id, issue_name, chamber, month, year, date_label) %>%
   summarise(posts = sum(posts), .groups = "drop")
 
-# Get unique dates for sorting purposes
-unique_dates <- df %>%
-  select(date, date_label) %>%
+# Get unique month-year combinations for dropdown
+unique_months <- df %>%
+  mutate(
+    # Create a standardized date for each month (1st of the month)
+    month_date = as.Date(paste0(year, "-", match(month, month.name), "-01"))
+  ) %>%
+  select(month_date, date_label) %>%
   distinct() %>%
-  arrange(desc(date))
+  arrange(desc(month_date))
 
 # Define UI for the application
 ui <- fluidPage(
@@ -71,13 +75,13 @@ ui <- fluidPage(
                       selected = "20"),
           selectInput("start_date",
                       "Start Date",
-                      choices = setNames(unique_dates$date, unique_dates$date_label),
-                      selected = unique_dates$date[2]  # Second most recent
+                      choices = setNames(unique_months$month_date, unique_months$date_label),
+                      selected = unique_months$month_date[2]  # Second most recent
           ),
           selectInput("end_date",
                       "End Date",
-                      choices = setNames(unique_dates$date, unique_dates$date_label),
-                      selected = unique_dates$date[1]  # Most recent
+                      choices = setNames(unique_months$month_date, unique_months$date_label),
+                      selected = unique_months$month_date[1]  # Most recent
           )
         ),
       ),
@@ -203,8 +207,8 @@ server <- function(input, output, session) {
   
   output$subtitle <- renderText({
     # Get the labels for display
-    start_label <- unique_dates %>% filter(date == as.Date(input$start_date)) %>% pull(date_label)
-    end_label <- unique_dates %>% filter(date == as.Date(input$end_date)) %>% pull(date_label)
+    start_label <- unique_months %>% filter(month_date == as.Date(input$start_date)) %>% pull(date_label)
+    end_label <- unique_months %>% filter(month_date == as.Date(input$end_date)) %>% pull(date_label)
     paste0(start_label, " - ", end_label)
   })
 }
