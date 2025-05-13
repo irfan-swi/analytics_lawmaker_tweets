@@ -1,0 +1,114 @@
+/* styles.css */
+
+body {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  color: #333333;
+  background-color: #F3F3EC;
+  width: 100%;
+  margin: 0px 20px 0px;
+}
+
+/* Styles for the main title */
+#custom-html-section h1 {
+  font-size: 36px; 
+  font-weight: 700;
+  color: #555961;
+  /*margin-left: 20px;*/
+}
+
+/* Flex container for fluidRow */
+.fluidRow {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+  }
+
+/* Sidebar styles */
+#sidebar {
+  margin: 5px;
+  /*margin-left: 20px;*/
+  width: 95%;
+  font-size: 14.5px;
+  padding: 15px 30px 15px;
+  background-color: #FFFFFF;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Sidebar content */
+/* Sidebar content */
+#sidebar-content .grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); /* Responsive columns */
+  box-sizing: border-box;
+  gap: 30px;
+  row-gap: 10px;
+  margin-bottom: 20px;
+}
+
+#sidebar-content .grid-container .form-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+#sidebar-content .grid-container select {
+  width: 100%; /* Full width for selectInput */
+  box-sizing: border-box; /* Ensure padding and border are included in the width */
+  margin: 0; /* Remove default margins */
+  padding: 0;
+}
+
+
+/* Sidebar titles */
+#sidebar h3, #sidebar label {
+  font-weight: 700; /* Bold */
+  font-size: 16px;
+}
+
+/* Adjust the look of select input */
+#sidebar .selectize-input {
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+}
+
+/* Adjust look of select input dropdown*/
+#sidebar .selectize-dropdown {
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+}
+/* Adjust the look of  slider input */
+#sidebar .irs-bar, #sidebar .irs-bar-edge, #sidebar .irs-single {
+  background-color: #31598B; /* Blue color */
+  border: 1px solid #31598B;
+  width: 100%; /* Full width for sliderInput */
+  margin-top: 10px; /* Add some spacing */
+}
+
+
+/* Main panel */
+#main {
+  padding: 20px;
+  margin: 5px;
+  /*margin-left: 20px;*/
+  width: 95%;
+  background-color: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Main title */
+#main #main_title{
+  font-weight: 700;
+  color: #333333;
+  font-size: 18px;
+  padding-left: 30px;
+}
+
+/* Subtitle */
+#main #subtitle {
+  color: #555961;
+  font-size: 16px;
+  padding-left: 15px;
+  padding-bottom: 20px;
+}
