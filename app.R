@@ -136,7 +136,7 @@ server <- function(input, output, session) {
     
     # Prepare data for plotting
     plot_df <- filtered_df %>%
-      group_by(display_name, party_name, chart_name, person_id) %>%
+      group_by(display_name, party_name, display_name, person_id) %>%
       summarise(posts = sum(posts), .groups = "drop")
     
     # Select top lawmakers based on user input
@@ -144,7 +144,7 @@ server <- function(input, output, session) {
       top_lawmakers <- plot_df %>%
         arrange(desc(posts)) %>%
         head(as.numeric(input$num_lawmakers))
-      plot_df <- plot_df %>% filter(chart_name %in% top_lawmakers$chart_name)
+      plot_df <- plot_df %>% filter(display_name %in% top_lawmakers$display_name)
     }
     
     # Set colors
@@ -155,7 +155,7 @@ server <- function(input, output, session) {
       mutate(party_clean = gsub(",.*", "", party_name))
     
     # Plot
-    p <- ggplot(plot_df, aes(x = reorder(chart_name, posts), y = posts, fill = party_clean)) +
+    p <- ggplot(plot_df, aes(x = reorder(display_name, posts), y = posts, fill = party_clean)) +
       geom_bar_interactive(stat = "identity", 
                           aes(tooltip = paste0(display_name, ': ', posts, ' posts'), 
                               data_id = as.numeric(person_id))) +
