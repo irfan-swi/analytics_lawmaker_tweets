@@ -11,21 +11,17 @@ register_gfont("Roboto")
 # Load the dataset from S3 bucket
 df <- fread("https://legis1-analytics.s3.us-east-1.amazonaws.com/df2.csv")
 
-# Function to convert date format from "Jan-22" to "January 2022"
-convert_date_format <- function(date_string) {
-  # Parse the date string
-  date_obj <- as.Date(paste0("01-", date_string), format = "%d-%b-%y")
-  # Format to full month and year
-  format(date_obj, "%B %Y")
-}
+# Convert date column to Date type for proper sorting
+df$date <- as.Date(df$date, format = "%Y-%m-%d")
 
-# Convert date_display column to full format
-df$date_display <- sapply(df$date_display, convert_date_format)
+# Create a display label combining month and year
+df$date_label <- paste(df$month, df$year)
 
-# Create date_sort for proper sorting if not already present
-if (!"date_sort" %in% colnames(df)) {
-  df$date_sort <- as.Date(paste0("01-", df$date_display), format = "%d-%B %Y")
-}
+# Get unique dates for sorting purposes
+unique_dates <- df %>%
+  select(date, date_label) %>%
+  distinct() %>%
+  arrange(desc(date))
 
 # Define UI for the application
 ui <- fluidPage(
@@ -70,13 +66,13 @@ ui <- fluidPage(
                       selected = "20"),
           selectInput("start_date",
                       "Start Date",
-                      choices = rev(unique(df$date_display)),
-                      selected = tail(unique(df$date_display), 2)[1]
+                      choices = setNames(unique_dates$date, unique_dates$date_label),
+                      selected = unique_dates$date[2]  # Second most recent
           ),
           selectInput("end_date",
                       "End Date",
-                      choices = rev(unique(df$date_display)),
-                      selected = tail(unique(df$date_display), 1)
+                      choices = setNames(unique_dates$date, unique_dates$date_label),
+                      selected = unique_dates$date[1]  # Most recent
           )
         ),
       ),
@@ -99,11 +95,9 @@ ui <- fluidPage(
 # Define server logic
 server <- function(input, output, session) {
   output$plot <- renderGirafe({
-    # Filter by date
-    start_date <- df %>% filter(date_display == input$start_date) %>% pull(date_sort)
-    end_date <- df %>% filter(date_display == input$end_date) %>% pull(date_sort)
-    
-    filtered_df <- subset(df, date_sort >= unique(start_date) & date_sort <= unique(end_date))
+    # Filter by date range
+    filtered_df <- df %>%
+      filter(date >= as.Date(input$start_date) & date <= as.Date(input$end_date))
     
     # Filter by chamber
     if (input$selected_chamber != "Both Chambers") {
@@ -128,15 +122,15 @@ server <- function(input, output, session) {
       # Return an empty plot with message
       p <- ggplot() + 
         annotate("text", x = 0.5, y = 0.5, 
-                label = "No data available for the selected filters", 
-                size = 5, hjust = 0.5) +
+                 label = "No data available for the selected filters", 
+                 size = 5, hjust = 0.5) +
         theme_void()
       return(girafe(ggobj = p))
     }
     
     # Prepare data for plotting
     plot_df <- filtered_df %>%
-      group_by(display_name, party_name, display_name, person_id) %>%
+      group_by(display_name, party_name, person_id) %>%
       summarise(posts = sum(posts), .groups = "drop")
     
     # Select top lawmakers based on user input
@@ -157,12 +151,12 @@ server <- function(input, output, session) {
     # Plot
     p <- ggplot(plot_df, aes(x = reorder(display_name, posts), y = posts, fill = party_clean)) +
       geom_bar_interactive(stat = "identity", 
-                          aes(tooltip = paste0(display_name, ': ', posts, ' posts'), 
-                              data_id = as.numeric(person_id))) +
+                           aes(tooltip = paste0(display_name, ': ', posts, ' posts'), 
+                               data_id = as.numeric(person_id))) +
       labs(x = "Lawmaker", y = "Number of Twitter Posts", fill = "Party") +
       coord_flip() +
       scale_fill_manual(values = party_colors, 
-                       limits = c("Democrat", "Republican", "Independent")) +
+                        limits = c("Democrat", "Republican", "Independent")) +
       theme_classic(base_family = "Roboto") +
       theme(axis.title = element_text(color="black", size = 8),
             axis.text = element_text(color="black", size = 6),
@@ -194,7 +188,10 @@ server <- function(input, output, session) {
   })
   
   output$subtitle <- renderText({
-    paste0(input$start_date, " - ", input$end_date)
+    # Get the labels for display
+    start_label <- unique_dates %>% filter(date == as.Date(input$start_date)) %>% pull(date_label)
+    end_label <- unique_dates %>% filter(date == as.Date(input$end_date)) %>% pull(date_label)
+    paste0(start_label, " - ", end_label)
   })
 }
 
