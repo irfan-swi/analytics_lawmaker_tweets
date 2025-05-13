@@ -9,7 +9,7 @@ library(data.table)
 register_gfont("Roboto")
 
 # Load the dataset from S3 bucket
-df <- fread("https://legis1-analytics.s3.us-east-1.amazonaws.com/df2.csv")
+df <- fread("https://legis1-analytics.s3.us-east-1.amazonaws.com/1_tweets_df.csv")
 
 # Convert date column to Date type for proper sorting
 df$date <- as.Date(df$date, format = "%Y-%m-%d")
