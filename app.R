@@ -132,10 +132,23 @@ server <- function(input, output, session) {
       return(girafe(ggobj = p))
     }
     
-    # Prepare data for plotting - count unique comm_content_ids
-    plot_df <- filtered_df %>%
-      group_by(display_name, party_name, person_id) %>%
-      summarise(posts = n_distinct(comm_content_id), .groups = "drop")
+    # Prepare data for plotting - count unique comm_content_ids per lawmaker
+    # If "All" issues is selected, we need to be careful not to double-count posts
+    if (input$selected_issue == "All") {
+      # First get unique posts per lawmaker to avoid counting the same post multiple times
+      unique_posts <- filtered_df %>%
+        select(display_name, party_name, person_id, comm_content_id) %>%
+        distinct()
+      
+      plot_df <- unique_posts %>%
+        group_by(display_name, party_name, person_id) %>%
+        summarise(posts = n(), .groups = "drop")
+    } else {
+      # If a specific issue is selected, just count unique comm_content_ids
+      plot_df <- filtered_df %>%
+        group_by(display_name, party_name, person_id) %>%
+        summarise(posts = n_distinct(comm_content_id), .groups = "drop")
+    }
     
     # Select top lawmakers based on user input
     if (input$num_lawmakers != "All") {
