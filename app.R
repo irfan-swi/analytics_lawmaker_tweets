@@ -11,26 +11,21 @@ register_gfont("Roboto")
 # Load the dataset from S3 bucket
 df <- fread("https://legis1-analytics.s3.us-east-1.amazonaws.com/df2.csv")
 
-# Format dates to show full month and year
-df$date <- as.Date(df$pub_date, format = "%Y-%m-%d")
-df$date_display <- format(df$date, "%B %Y")  # Full month name and year
-df$date_sort <- as.Date(paste0(format(df$date, "%Y-%m"), "-01"))
+# Function to convert date format from "Jan-22" to "January 2022"
+convert_date_format <- function(date_string) {
+  # Parse the date string
+  date_obj <- as.Date(paste0("01-", date_string), format = "%d-%b-%y")
+  # Format to full month and year
+  format(date_obj, "%B %Y")
+}
 
-# Aggregate data by month and other variables
-df <- df %>%
-  group_by(date_sort, date_display, member_id, person_id, chamber, issue_name, swi_issue_id, 
-           display_name, formal_title, first_name, last_name, party_name, us_state_id, district_no) %>%
-  summarise(posts = n(), .groups = "drop") %>%
-  ungroup() %>%
-  arrange(date_sort)
+# Convert date_display column to full format
+df$date_display <- sapply(df$date_display, convert_date_format)
 
-# Clean up issue names (remove trailing asterisks)
-df$issue_name <- gsub("\\*\\*$", "", df$issue_name)
-
-# Create chart name column
-df <- df %>%
-  mutate(chart_name = paste0(substr(display_name, 1, 3), ". ", last_name, " ", 
-                            sub(".*\\s(\\S+)$", "\\1", display_name)))
+# Create date_sort for proper sorting if not already present
+if (!"date_sort" %in% colnames(df)) {
+  df$date_sort <- as.Date(paste0("01-", df$date_display), format = "%d-%B %Y")
+}
 
 # Define UI for the application
 ui <- fluidPage(
