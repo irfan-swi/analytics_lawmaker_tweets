@@ -17,6 +17,11 @@ df$date <- as.Date(df$date, format = "%Y-%m-%d")
 # Create a display label combining month and year
 df$date_label <- paste(df$month, df$year)
 
+# Pre-aggregate the data by month
+df_monthly <- df %>%
+  group_by(display_name, party_name, person_id, issue_name, chamber, month, year, date_label) %>%
+  summarise(posts = sum(posts), .groups = "drop")
+
 # Get unique dates for sorting purposes
 unique_dates <- df %>%
   select(date, date_label) %>%
@@ -95,9 +100,18 @@ ui <- fluidPage(
 # Define server logic
 server <- function(input, output, session) {
   output$plot <- renderGirafe({
-    # Filter by date range
-    filtered_df <- df %>%
-      filter(date >= as.Date(input$start_date) & date <= as.Date(input$end_date))
+    # Get the year-month from the selected dates
+    start_date <- as.Date(input$start_date)
+    end_date <- as.Date(input$end_date)
+    start_year <- format(start_date, "%Y")
+    start_month <- format(start_date, "%B")
+    end_year <- format(end_date, "%Y")
+    end_month <- format(end_date, "%B")
+    
+    # Filter by date range using month and year
+    filtered_df <- df_monthly %>%
+      filter((year > start_year | (year == start_year & month >= start_month)) &
+             (year < end_year | (year == end_year & month <= end_month)))
     
     # Filter by chamber
     if (input$selected_chamber != "Both Chambers") {
@@ -128,7 +142,7 @@ server <- function(input, output, session) {
       return(girafe(ggobj = p))
     }
     
-    # Prepare data for plotting
+    # Prepare data for plotting - aggregate across all months in the range
     plot_df <- filtered_df %>%
       group_by(display_name, party_name, person_id) %>%
       summarise(posts = sum(posts), .groups = "drop")
