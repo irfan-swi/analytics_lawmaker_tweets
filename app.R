@@ -8,24 +8,45 @@ library(data.table)
 # Register the font
 register_gfont("Roboto")
 
-# Load the dataset from S3 bucket
-df <- fread("https://legis1-analytics.s3.us-east-1.amazonaws.com/1_tweets_df.csv")
+# Global variables for default values
+DEFAULT_CHAMBER <- "Both Chambers"
+DEFAULT_PARTY <- "All Parties"
+DEFAULT_ISSUE <- "All"
+DEFAULT_NUM_LAWMAKERS <- "20"
 
-# Convert date column to Date type for proper sorting
-df$date <- as.Date(df$date, format = "%Y-%m-%d")
+# Pre-process data once at startup
+startup_time <- Sys.time()
+message("Starting data load...")
 
-# Create a display label combining month and year
-df$date_label <- paste(df$month, df$year)
+# Use fread with optimizations
+df <- fread("https://legis1-analytics.s3.us-east-1.amazonaws.com/1_tweets_df.csv",
+            showProgress = FALSE,
+            data.table = TRUE,
+            nThread = parallel::detectCores())
 
-# Get unique month-year combinations for dropdown
-unique_months <- df %>%
-  mutate(
-    # Create a standardized date for each month (1st of the month)
-    month_date = as.Date(paste0(year, "-", match(month, month.name), "-01"))
-  ) %>%
-  select(month_date, date_label) %>%
-  distinct() %>%
-  arrange(desc(month_date))
+# Convert to data.table operations for speed
+df[, date := as.Date(date, format = "%Y-%m-%d")]
+df[, date_label := paste(month, year)]
+df[, party_clean := gsub(",.*", "", party_name)]
+
+# Pre-calculate default view data
+unique_months <- df[, .(month_date = as.Date(paste0(year, "-", match(month, month.name), "-01")),
+                        date_label = date_label[1]),
+                    by = .(year, month)][order(-month_date)]
+
+# Get default date range (most recent two months)
+default_end_date <- unique_months$month_date[1]
+default_start_date <- unique_months$month_date[2]
+
+# Pre-filter for default view
+default_filtered <- df[date >= default_start_date & date <= default_end_date]
+
+# Pre-aggregate default data
+default_plot_data <- default_filtered[, .(posts = uniqueN(comm_content_id)), 
+                                      by = .(display_name, party_name, party_clean, person_id)
+][order(-posts)][1:as.numeric(DEFAULT_NUM_LAWMAKERS)]
+
+message(paste("Data loaded in", round(Sys.time() - startup_time, 2), "seconds"))
 
 # Define UI for the application
 ui <- fluidPage(
@@ -52,31 +73,31 @@ ui <- fluidPage(
           selectInput("selected_issue",
                       "Issue Area",
                       choices = c("All", sort(unique(df$issue_name))),
-                      selected = "All"),
+                      selected = DEFAULT_ISSUE),
           # Select Chamber
           selectInput("selected_chamber",
                       "Chamber",
                       choices = c("Both Chambers", "House", "Senate"),
-                      selected = "Both Chambers"),
+                      selected = DEFAULT_CHAMBER),
           # Select Party
           selectInput("selected_party",
                       "Party",
                       choices = c("All Parties", "Democrat", "Republican", "Independent"),
-                      selected = "All Parties"),
+                      selected = DEFAULT_PARTY),
           # Select Number of Lawmakers to display
           selectInput("num_lawmakers",
                       "Number of lawmakers",
                       choices = c("10", "20", "50"),
-                      selected = "20"),
+                      selected = DEFAULT_NUM_LAWMAKERS),
           selectInput("start_date",
                       "Start Date",
                       choices = setNames(unique_months$month_date, unique_months$date_label),
-                      selected = unique_months$month_date[2]  # Second most recent
+                      selected = default_start_date
           ),
           selectInput("end_date",
                       "End Date",
                       choices = setNames(unique_months$month_date, unique_months$date_label),
-                      selected = unique_months$month_date[1]  # Most recent
+                      selected = default_end_date
           )
         ),
       ),
@@ -98,31 +119,75 @@ ui <- fluidPage(
 
 # Define server logic
 server <- function(input, output, session) {
-  output$plot <- renderGirafe({
-    # Filter by date range
-    filtered_df <- df %>%
-      filter(date >= as.Date(input$start_date) & date <= as.Date(input$end_date))
+  
+  # Reactive values to cache computations
+  values <- reactiveValues(
+    last_plot_data = default_plot_data
+  )
+  
+  # Check if we can use cached data
+  use_default_data <- reactive({
+    input$selected_issue == DEFAULT_ISSUE &&
+      input$selected_chamber == DEFAULT_CHAMBER &&
+      input$selected_party == DEFAULT_PARTY &&
+      input$num_lawmakers == DEFAULT_NUM_LAWMAKERS &&
+      input$start_date == as.character(default_start_date) &&
+      input$end_date == as.character(default_end_date)
+  })
+  
+  # Process data with caching
+  filtered_data <- reactive({
+    # Use pre-computed default data if possible
+    if (use_default_data()) {
+      return(default_plot_data)
+    }
+    
+    # Otherwise, compute on demand using data.table for speed
+    filtered_df <- df[date >= as.Date(input$start_date) & date <= as.Date(input$end_date)]
     
     # Filter by chamber
     if (input$selected_chamber != "Both Chambers") {
-      filtered_df <- filtered_df %>% filter(chamber == input$selected_chamber)
+      filtered_df <- filtered_df[chamber == input$selected_chamber]
     }
     
     # Filter by party
     if (input$selected_party != "All Parties") {
-      # Clean party names in the data to match the dropdown values
-      filtered_df <- filtered_df %>% 
-        mutate(party_clean = gsub(",.*", "", party_name)) %>%
-        filter(party_clean == input$selected_party)
+      filtered_df <- filtered_df[party_clean == input$selected_party]
     }
     
     # Filter by selected issue
     if (input$selected_issue != "All") {
-      filtered_df <- filtered_df %>% filter(issue_name == input$selected_issue)
+      filtered_df <- filtered_df[issue_name == input$selected_issue]
     }
     
     # Check if the filtered dataframe is empty
     if(nrow(filtered_df) == 0) {
+      return(NULL)
+    }
+    
+    # Prepare data for plotting using data.table operations
+    if (input$selected_issue == "All") {
+      # Get unique posts per lawmaker
+      plot_df <- filtered_df[, .(posts = uniqueN(comm_content_id)), 
+                             by = .(display_name, party_name, party_clean, person_id)]
+    } else {
+      plot_df <- filtered_df[, .(posts = uniqueN(comm_content_id)), 
+                             by = .(display_name, party_name, party_clean, person_id)]
+    }
+    
+    # Select top lawmakers based on user input
+    if (input$num_lawmakers != "All") {
+      plot_df <- plot_df[order(-posts)][1:as.numeric(input$num_lawmakers)]
+    }
+    
+    values$last_plot_data <- plot_df
+    plot_df
+  })
+  
+  output$plot <- renderGirafe({
+    plot_data <- filtered_data()
+    
+    if (is.null(plot_data)) {
       # Return an empty plot with message
       p <- ggplot() + 
         annotate("text", x = 0.5, y = 0.5, 
@@ -132,41 +197,11 @@ server <- function(input, output, session) {
       return(girafe(ggobj = p))
     }
     
-    # Prepare data for plotting - count unique comm_content_ids per lawmaker
-    # If "All" issues is selected, we need to be careful not to double-count posts
-    if (input$selected_issue == "All") {
-      # First get unique posts per lawmaker to avoid counting the same post multiple times
-      unique_posts <- filtered_df %>%
-        select(display_name, party_name, person_id, comm_content_id) %>%
-        distinct()
-      
-      plot_df <- unique_posts %>%
-        group_by(display_name, party_name, person_id) %>%
-        summarise(posts = n(), .groups = "drop")
-    } else {
-      # If a specific issue is selected, just count unique comm_content_ids
-      plot_df <- filtered_df %>%
-        group_by(display_name, party_name, person_id) %>%
-        summarise(posts = n_distinct(comm_content_id), .groups = "drop")
-    }
-    
-    # Select top lawmakers based on user input
-    if (input$num_lawmakers != "All") {
-      top_lawmakers <- plot_df %>%
-        arrange(desc(posts)) %>%
-        head(as.numeric(input$num_lawmakers))
-      plot_df <- plot_df %>% filter(display_name %in% top_lawmakers$display_name)
-    }
-    
     # Set colors
     party_colors <- c("Democrat" = "#2E598E", "Republican" = "#810000", "Independent" = "#B19CD9")
     
-    # Clean party names for color mapping
-    plot_df <- plot_df %>%
-      mutate(party_clean = gsub(",.*", "", party_name))
-    
     # Plot
-    p <- ggplot(plot_df, aes(x = reorder(display_name, posts), y = posts, fill = party_clean)) +
+    p <- ggplot(plot_data, aes(x = reorder(display_name, posts), y = posts, fill = party_clean)) +
       geom_bar_interactive(stat = "identity", 
                            aes(tooltip = paste0(display_name, ': ', posts, ' posts'), 
                                data_id = as.numeric(person_id))) +
@@ -206,8 +241,8 @@ server <- function(input, output, session) {
   
   output$subtitle <- renderText({
     # Get the labels for display
-    start_label <- unique_months %>% filter(month_date == as.Date(input$start_date)) %>% pull(date_label)
-    end_label <- unique_months %>% filter(month_date == as.Date(input$end_date)) %>% pull(date_label)
+    start_label <- unique_months[month_date == as.Date(input$start_date), date_label]
+    end_label <- unique_months[month_date == as.Date(input$end_date), date_label]
     paste0(start_label, " - ", end_label)
   })
 }
