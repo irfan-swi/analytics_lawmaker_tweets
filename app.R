@@ -190,7 +190,7 @@ server <- function(input, output, session) {
   observeEvent(input$plot_selected, {
     selected_id <- input$plot_selected
     if (!is.null(selected_id) && length(selected_id) > 0) {
-      url <- paste0("https://congress-qa.sunwater.org/lawmaker/detail?id=", selected_id, "#communications")
+      url <- paste0("https://app.legis1.com/lawmaker/detail?id=", selected_id, "#communications")
       session$sendCustomMessage("openURL", url)
     }
   })
